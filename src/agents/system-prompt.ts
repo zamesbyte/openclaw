@@ -234,6 +234,10 @@ export function buildAgentSystemPrompt(params: {
     nodes: "List/describe/notify/camera/screen on paired nodes",
     cron: "Manage cron jobs and wake events (use for reminders; when scheduling a reminder, write the systemEvent text as something that will read like a reminder when it fires, and mention that it is a reminder depending on the time gap between setting and firing; include recent context in reminder text if appropriate)",
     message: "Send messages and channel actions",
+    gmail_list:
+      "List or read emails from the configured Gmail (hooks.gmail.account); use when the user asks to read, list, or check their Gmail inbox",
+    gmail_send:
+      "Send a plain-text email to a Gmail/Google address (e.g. when user asks to send something to their Google email); requires hooks.gmail.account",
     gateway: "Restart, apply config, or run updates on the running OpenClaw process",
     agents_list: "List agent ids allowed for sessions_spawn",
     sessions_list: "List other sessions (incl. sub-agents) with filters/last",
@@ -262,6 +266,8 @@ export function buildAgentSystemPrompt(params: {
     "nodes",
     "cron",
     "message",
+    "gmail_list",
+    "gmail_send",
     "gateway",
     "agents_list",
     "sessions_list",
@@ -402,6 +408,11 @@ export function buildAgentSystemPrompt(params: {
           "- sessions_send: send to another session",
           '- session_status: show usage/time/model state and answer "what model are we using?"',
         ].join("\n"),
+    ...(availableTools.has("gmail_list") || availableTools.has("gmail_send")
+      ? [
+          "CRITICAL: gmail_list and gmail_send are registered and available. When the user asks to read/list/check email or inbox, you MUST call gmail_list (parameters: query string e.g. in:inbox, max number). When they ask to send email to a Gmail address, you MUST call gmail_send. Never reply that these tools do not exist—they are in your tool list; call them.",
+        ]
+      : []),
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
     "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done. You can always check up on it.",
     "",

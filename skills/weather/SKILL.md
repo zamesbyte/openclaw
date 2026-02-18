@@ -9,7 +9,18 @@ metadata: { "openclaw": { "emoji": "🌤️", "requires": { "bins": ["curl"] } }
 
 Two free services, no API keys needed.
 
-## wttr.in (primary)
+## 优先用 web_fetch 拿天气（推荐）
+
+**避免用 exec 调 curl**：exec 可能因超时先返回 "Command still running"，导致拿不到输出、回复不完整。  
+请用 **web_fetch** 直接请求 wttr.in，一次拿到文本再总结给用户：
+
+- 简洁一行：`https://wttr.in/北京?format=3` → 如 "北京: ⛅️ +5°C"
+- 稍详：`https://wttr.in/北京?format=%l:+%c+%t+%h+%w`
+- 英文城市：`https://wttr.in/London?format=3`
+
+拿到内容后，用中文简短总结（地点、天气、温度、体感建议），不要只回复“正在查询”就结束。
+
+## wttr.in 用 curl（仅当需要 PNG 或本机脚本时）
 
 Quick one-liner:
 

@@ -25,10 +25,12 @@ export const HookMappingSchema = z
         z.literal("telegram"),
         z.literal("discord"),
         z.literal("irc"),
+        z.literal("googlechat"),
         z.literal("slack"),
         z.literal("signal"),
         z.literal("imessage"),
         z.literal("msteams"),
+        z.literal("feishu"),
       ])
       .optional(),
     to: z.string().optional(),

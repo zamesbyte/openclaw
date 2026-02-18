@@ -284,6 +284,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const minScore = opts?.minScore ?? this.settings.query.minScore;
     const maxResults = opts?.maxResults ?? this.settings.query.maxResults;
     const hybrid = this.settings.query.hybrid;
+    const rerankCfg = this.settings.query.rerank;
     const candidates = Math.min(
       200,
       Math.max(1, Math.floor(maxResults * hybrid.candidateMultiplier)),
@@ -300,7 +301,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       : [];
 
     if (!hybrid.enabled) {
-      return vectorResults.filter((entry) => entry.score >= minScore).slice(0, maxResults);
+      const filtered = vectorResults
+        .filter((entry) => entry.score >= minScore)
+        .slice(0, maxResults);
+      return rerankCfg.enabled ? this.applyRerank(cleaned, filtered, rerankCfg) : filtered;
     }
 
     const merged = this.mergeHybridResults({
@@ -310,7 +314,36 @@ export class MemoryIndexManager implements MemorySearchManager {
       textWeight: hybrid.textWeight,
     });
 
-    return merged.filter((entry) => entry.score >= minScore).slice(0, maxResults);
+    const filtered = merged.filter((entry) => entry.score >= minScore);
+    if (rerankCfg.enabled && filtered.length > 1) {
+      return this.applyRerank(cleaned, filtered, rerankCfg);
+    }
+    return filtered.slice(0, maxResults);
+  }
+
+  private async applyRerank(
+    query: string,
+    results: MemorySearchResult[],
+    config: { baseUrl: string; apiKey?: string; model: string; topN: number },
+  ): Promise<MemorySearchResult[]> {
+    const { rerankDocuments } = await import("./reranker.js");
+    const docs = results.map((r, i) => ({
+      id: String(i),
+      text: r.snippet,
+    }));
+    const reranked = await rerankDocuments(query, docs, config);
+    if (reranked.every((r) => r.relevanceScore === 0)) {
+      return results.slice(0, config.topN);
+    }
+    return reranked
+      .filter((r) => r.relevanceScore > 0)
+      .map((r) => {
+        const idx = Number(r.id);
+        const original = results[idx];
+        return original ? { ...original, score: r.relevanceScore } : undefined;
+      })
+      .filter((r): r is MemorySearchResult => r !== undefined)
+      .slice(0, config.topN);
   }
 
   private async searchVector(

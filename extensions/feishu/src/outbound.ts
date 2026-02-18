@@ -10,12 +10,18 @@ export const feishuOutbound: ChannelOutboundAdapter = {
   textChunkLimit: 4000,
   sendText: async ({ cfg, to, text, accountId }) => {
     const result = await sendMessageFeishu({ cfg, to, text, accountId: accountId ?? undefined });
+    console.info(
+      `[feishu] sent text messageId=${result.messageId} to=${to} (accountId=${accountId ?? "default"})`,
+    );
     return { channel: "feishu", ...result };
   },
   sendMedia: async ({ cfg, to, text, mediaUrl, accountId }) => {
     // Send text first if provided
     if (text?.trim()) {
-      await sendMessageFeishu({ cfg, to, text, accountId: accountId ?? undefined });
+      const sent = await sendMessageFeishu({ cfg, to, text, accountId: accountId ?? undefined });
+      console.info(
+        `[feishu] sent text messageId=${sent.messageId} to=${to} (accountId=${accountId ?? "default"})`,
+      );
     }
 
     // Upload and send media if URL provided
@@ -27,6 +33,9 @@ export const feishuOutbound: ChannelOutboundAdapter = {
           mediaUrl,
           accountId: accountId ?? undefined,
         });
+        console.info(
+          `[feishu] sent media messageId=${result.messageId} to=${to} (accountId=${accountId ?? "default"})`,
+        );
         return { channel: "feishu", ...result };
       } catch (err) {
         // Log the error for debugging
@@ -39,6 +48,9 @@ export const feishuOutbound: ChannelOutboundAdapter = {
           text: fallbackText,
           accountId: accountId ?? undefined,
         });
+        console.info(
+          `[feishu] sent text messageId=${result.messageId} to=${to} (accountId=${accountId ?? "default"})`,
+        );
         return { channel: "feishu", ...result };
       }
     }
@@ -50,6 +62,9 @@ export const feishuOutbound: ChannelOutboundAdapter = {
       text: text ?? "",
       accountId: accountId ?? undefined,
     });
+    console.info(
+      `[feishu] sent text messageId=${result.messageId} to=${to} (accountId=${accountId ?? "default"})`,
+    );
     return { channel: "feishu", ...result };
   },
 };

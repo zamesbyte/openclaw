@@ -32,8 +32,8 @@ export const TOOL_GROUPS: Record<string, string[]> = {
   "group:ui": ["browser", "canvas"],
   // Automation + infra
   "group:automation": ["cron", "gateway"],
-  // Messaging surface
-  "group:messaging": ["message"],
+  // Messaging surface (message = chat channels; gmail_list = read Gmail; gmail_send = send to Gmail)
+  "group:messaging": ["message", "gmail_list", "gmail_send"],
   // Nodes + device tools
   "group:nodes": ["nodes"],
   // All OpenClaw native tools (excludes provider plugins).
@@ -43,6 +43,8 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "nodes",
     "cron",
     "message",
+    "gmail_list",
+    "gmail_send",
     "gateway",
     "agents_list",
     "sessions_list",

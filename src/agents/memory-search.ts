@@ -63,6 +63,13 @@ export type ResolvedMemorySearchConfig = {
       textWeight: number;
       candidateMultiplier: number;
     };
+    rerank: {
+      enabled: boolean;
+      baseUrl: string;
+      apiKey?: string;
+      model: string;
+      topN: number;
+    };
   };
   cache: {
     enabled: boolean;
@@ -85,6 +92,11 @@ const DEFAULT_HYBRID_VECTOR_WEIGHT = 0.7;
 const DEFAULT_HYBRID_TEXT_WEIGHT = 0.3;
 const DEFAULT_HYBRID_CANDIDATE_MULTIPLIER = 4;
 const DEFAULT_CACHE_ENABLED = true;
+const DEFAULT_RERANK_ENABLED = false;
+const DEFAULT_RERANK_BASE_URL =
+  "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank";
+const DEFAULT_RERANK_MODEL = "gte-rerank";
+const DEFAULT_RERANK_TOP_N = 5;
 const DEFAULT_SOURCES: Array<"memory" | "sessions"> = ["memory"];
 
 function normalizeSources(
@@ -237,6 +249,21 @@ function mergeConfig(
       defaults?.query?.hybrid?.candidateMultiplier ??
       DEFAULT_HYBRID_CANDIDATE_MULTIPLIER,
   };
+  const rerank = {
+    enabled:
+      overrides?.query?.rerank?.enabled ??
+      defaults?.query?.rerank?.enabled ??
+      DEFAULT_RERANK_ENABLED,
+    baseUrl:
+      overrides?.query?.rerank?.baseUrl ??
+      defaults?.query?.rerank?.baseUrl ??
+      DEFAULT_RERANK_BASE_URL,
+    apiKey: overrides?.query?.rerank?.apiKey ?? defaults?.query?.rerank?.apiKey,
+    model:
+      overrides?.query?.rerank?.model ?? defaults?.query?.rerank?.model ?? DEFAULT_RERANK_MODEL,
+    topN: overrides?.query?.rerank?.topN ?? defaults?.query?.rerank?.topN ?? DEFAULT_RERANK_TOP_N,
+  };
+
   const cache = {
     enabled: overrides?.cache?.enabled ?? defaults?.cache?.enabled ?? DEFAULT_CACHE_ENABLED,
     maxEntries: overrides?.cache?.maxEntries ?? defaults?.cache?.maxEntries,
@@ -281,6 +308,13 @@ function mergeConfig(
         vectorWeight: normalizedVectorWeight,
         textWeight: normalizedTextWeight,
         candidateMultiplier,
+      },
+      rerank: {
+        enabled: Boolean(rerank.enabled),
+        baseUrl: rerank.baseUrl,
+        apiKey: rerank.apiKey,
+        model: rerank.model,
+        topN: Math.max(1, rerank.topN),
       },
     },
     cache: {

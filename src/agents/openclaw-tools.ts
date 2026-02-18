@@ -7,7 +7,11 @@ import { createAgentsListTool } from "./tools/agents-list-tool.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
+import { createCursorCliTool } from "./tools/cursor-cli-tool.js";
 import { createGatewayTool } from "./tools/gateway-tool.js";
+import { createGeminiCliTool } from "./tools/gemini-cli-tool.js";
+import { createGmailListTool } from "./tools/gmail-list-tool.js";
+import { createGmailSendTool } from "./tools/gmail-send-tool.js";
 import { createImageTool } from "./tools/image-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
@@ -94,6 +98,7 @@ export function createOpenClawTools(options?: {
       allowHostControl: options?.allowHostBrowserControl,
     }),
     createCanvasTool(),
+    createCursorCliTool(),
     createNodesTool({
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
@@ -102,6 +107,9 @@ export function createOpenClawTools(options?: {
       agentSessionKey: options?.agentSessionKey,
     }),
     ...(messageTool ? [messageTool] : []),
+    createGeminiCliTool(),
+    createGmailListTool({ config: options?.config }),
+    createGmailSendTool({ config: options?.config }),
     createTtsTool({
       agentChannel: options?.agentChannel,
       config: options?.config,

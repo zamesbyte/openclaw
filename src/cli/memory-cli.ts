@@ -368,6 +368,7 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
       : [];
     const lines = [
       `${heading("Memory Search")} ${muted(`(${agentId})`)}`,
+      `${label("Backend")} ${info(status.backend ?? "builtin")} ${muted("(builtin = OpenClaw 原生, qmd = QMD 侧车)")}`,
       `${label("Provider")} ${info(status.provider)} ${muted(`(requested: ${requestedProvider})`)}`,
       `${label("Model")} ${info(modelLabel)}`,
       sourceList ? `${label("Sources")} ${info(sourceList)}` : null,

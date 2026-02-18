@@ -562,53 +562,76 @@ export async function runCronIsolatedAgentTurn(params: {
         }
       }
     } else if (synthesizedText) {
-      const announceSessionKey = resolveAgentMainSessionKey({
-        cfg: params.cfg,
-        agentId,
-      });
-      const taskLabel =
-        typeof params.job.name === "string" && params.job.name.trim()
-          ? params.job.name.trim()
-          : `cron:${params.job.id}`;
-      try {
-        const didAnnounce = await runSubagentAnnounceFlow({
-          childSessionKey: runSessionKey,
-          childRunId: `${params.job.id}:${runSessionId}`,
-          requesterSessionKey: announceSessionKey,
-          requesterOrigin: {
+      // When delivery target is explicit (e.g. hook mapping with channel+to), send text
+      // directly so the user receives it immediately without a second agent run.
+      const explicitTarget = resolvedDelivery.to && resolvedDelivery.mode === "explicit";
+      if (explicitTarget) {
+        try {
+          await deliverOutboundPayloads({
+            cfg: cfgWithAgentDefaults,
             channel: resolvedDelivery.channel,
             to: resolvedDelivery.to,
             accountId: resolvedDelivery.accountId,
             threadId: resolvedDelivery.threadId,
-          },
-          requesterDisplayKey: announceSessionKey,
-          task: taskLabel,
-          timeoutMs,
-          cleanup: "keep",
-          roundOneReply: synthesizedText,
-          waitForCompletion: false,
-          startedAt: runStartedAt,
-          endedAt: runEndedAt,
-          outcome: { status: "ok" },
-          announceType: "cron job",
-        });
-        if (!didAnnounce) {
-          const message = "cron announce delivery failed";
+            payloads: [{ text: synthesizedText }],
+            bestEffort: deliveryBestEffort,
+            deps: createOutboundSendDeps(params.deps),
+          });
+        } catch (err) {
           if (!deliveryBestEffort) {
-            return withRunSession({
-              status: "error",
-              summary,
-              outputText,
-              error: message,
-            });
+            return withRunSession({ status: "error", summary, outputText, error: String(err) });
           }
-          logWarn(`[cron:${params.job.id}] ${message}`);
+          logWarn(`[cron:${params.job.id}] direct deliver failed: ${String(err)}`);
         }
-      } catch (err) {
-        if (!deliveryBestEffort) {
-          return withRunSession({ status: "error", summary, outputText, error: String(err) });
+      } else {
+        const announceSessionKey = resolveAgentMainSessionKey({
+          cfg: params.cfg,
+          agentId,
+        });
+        const taskLabel =
+          typeof params.job.name === "string" && params.job.name.trim()
+            ? params.job.name.trim()
+            : `cron:${params.job.id}`;
+        try {
+          const didAnnounce = await runSubagentAnnounceFlow({
+            childSessionKey: runSessionKey,
+            childRunId: `${params.job.id}:${runSessionId}`,
+            requesterSessionKey: announceSessionKey,
+            requesterOrigin: {
+              channel: resolvedDelivery.channel,
+              to: resolvedDelivery.to,
+              accountId: resolvedDelivery.accountId,
+              threadId: resolvedDelivery.threadId,
+            },
+            requesterDisplayKey: announceSessionKey,
+            task: taskLabel,
+            timeoutMs,
+            cleanup: "keep",
+            roundOneReply: synthesizedText,
+            waitForCompletion: false,
+            startedAt: runStartedAt,
+            endedAt: runEndedAt,
+            outcome: { status: "ok" },
+            announceType: "cron job",
+          });
+          if (!didAnnounce) {
+            const message = "cron announce delivery failed";
+            if (!deliveryBestEffort) {
+              return withRunSession({
+                status: "error",
+                summary,
+                outputText,
+                error: message,
+              });
+            }
+            logWarn(`[cron:${params.job.id}] ${message}`);
+          }
+        } catch (err) {
+          if (!deliveryBestEffort) {
+            return withRunSession({ status: "error", summary, outputText, error: String(err) });
+          }
+          logWarn(`[cron:${params.job.id}] ${String(err)}`);
         }
-        logWarn(`[cron:${params.job.id}] ${String(err)}`);
       }
     }
   }

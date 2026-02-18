@@ -313,6 +313,19 @@ export type MemorySearchConfig = {
       /** Multiplier for candidate pool size (default: 4). */
       candidateMultiplier?: number;
     };
+    /** Reranking configuration for improving search result quality. */
+    rerank?: {
+      /** Enable reranking of search results (default: false). */
+      enabled?: boolean;
+      /** Rerank API base URL (e.g., DashScope endpoint). */
+      baseUrl?: string;
+      /** API key for the rerank service. */
+      apiKey?: string;
+      /** Rerank model id (e.g., "qwen3-rerank"). */
+      model?: string;
+      /** Number of top results to return after reranking. */
+      topN?: number;
+    };
   };
   /** Index cache behavior. */
   cache?: {

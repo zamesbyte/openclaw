@@ -415,6 +415,16 @@ export const MemorySearchSchema = z
           })
           .strict()
           .optional(),
+        rerank: z
+          .object({
+            enabled: z.boolean().optional(),
+            baseUrl: z.string().optional(),
+            apiKey: z.string().optional(),
+            model: z.string().optional(),
+            topN: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

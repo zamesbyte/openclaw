@@ -56,6 +56,12 @@ describe("createOpenClawCodingTools", () => {
     expect(defaultTools.some((tool) => tool.name === "process")).toBe(true);
     expect(defaultTools.some((tool) => tool.name === "apply_patch")).toBe(false);
   });
+  it("includes gmail_send in default tools", () => {
+    expect(defaultTools.some((tool) => tool.name === "gmail_send")).toBe(true);
+  });
+  it("includes gmail_list in default tools", () => {
+    expect(defaultTools.some((tool) => tool.name === "gmail_list")).toBe(true);
+  });
   it("gates apply_patch behind tools.exec.applyPatch for OpenAI models", () => {
     const config: OpenClawConfig = {
       tools: {

@@ -26,6 +26,8 @@ metadata:
 
 Use Gemini in one-shot mode with a positional prompt (avoid interactive mode).
 
+OpenClaw tool: `gemini_cli` — run a one-shot prompt via the local `gemini` binary (prompt; optional model, outputFormat).
+
 Quick start
 
 - `gemini "Answer this question..."`
