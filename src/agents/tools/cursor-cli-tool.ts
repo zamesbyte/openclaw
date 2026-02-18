@@ -1,7 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import type { AnyAgentTool } from "./common.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
-import { hasBinary } from "../skills.js";
+import {
+  canRunViaZsh,
+  envPathWithCommonBins,
+  resolveCliBinary,
+  runViaZsh,
+} from "./cli-binary-resolve.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const CursorCliToolSchema = Type.Object({
@@ -32,24 +37,55 @@ export function createCursorCliTool(): AnyAgentTool {
       const prompt = readStringParam(params, "prompt", { required: true });
       const model = readStringParam(params, "model");
 
-      if (!hasBinary("cursor-agent")) {
+      // Prefer running Cursor Agent directly (no shell rc) to avoid inheriting
+      // user-specific env from ~/.zshrc that can break/slow down network calls.
+      // If we can't resolve it from PATH + fallback dirs, fall back to zsh.
+      const resolved = resolveCliBinary("cursor-agent");
+      const useZshFallback = !resolved && canRunViaZsh();
+      const cursorAgentPath = resolved ?? (useZshFallback ? "cursor-agent" : null);
+      // Cursor Agent blocks headless runs in untrusted workspaces. Since this tool is
+      // explicitly invoked by the user from OpenClaw, we pass --trust to avoid an
+      // interactive prompt and run in ask-mode to keep it read-only by default.
+      const argv: string[] = cursorAgentPath
+        ? [
+            cursorAgentPath,
+            "--print",
+            "--trust",
+            "--mode",
+            "ask",
+            "--output-format",
+            "text",
+            prompt,
+          ]
+        : [];
+      if (!argv.length) {
         return jsonResult({
           ok: false,
           error:
             "cursor-agent not found. Install Cursor CLI: curl https://cursor.com/install -fsS | bash (see https://cursor.com/docs/cli/overview).",
         });
       }
-
-      const argv: string[] = ["cursor-agent", "-p", prompt];
       if (model) {
         argv.push("--model", model);
       }
 
+      const timeoutMs = 180_000;
       try {
-        const result = await runCommandWithTimeout(argv, {
-          timeoutMs: 120_000,
-        });
+        const result = useZshFallback
+          ? await runViaZsh(argv, { timeoutMs, input: "" })
+          : await runCommandWithTimeout(argv, {
+              timeoutMs,
+              env: { PATH: envPathWithCommonBins() },
+              input: "",
+            });
 
+        if (result.code === null || result.killed) {
+          return jsonResult({
+            ok: false,
+            error: `Command timed out (${timeoutMs / 1000}s).`,
+            code: result.code,
+          });
+        }
         if (result.code !== 0) {
           const err = (result.stderr ?? result.stdout ?? "").trim() || "cursor-agent failed";
           return jsonResult({

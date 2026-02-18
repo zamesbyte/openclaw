@@ -1,7 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import type { AnyAgentTool } from "./common.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
-import { hasBinary } from "../skills.js";
+import {
+  canRunViaZsh,
+  envPathWithCommonBins,
+  resolveCliBinary,
+  runViaZsh,
+} from "./cli-binary-resolve.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const GeminiCliToolSchema = Type.Object({
@@ -38,15 +43,16 @@ export function createGeminiCliTool(): AnyAgentTool {
       const model = readStringParam(params, "model");
       const outputFormat = readStringParam(params, "outputFormat");
 
-      if (!hasBinary("gemini")) {
+      const useZsh = canRunViaZsh();
+      const geminiPath = useZsh ? "gemini" : resolveCliBinary("gemini");
+      const argv: string[] = geminiPath ? [geminiPath] : [];
+      if (!argv.length) {
         return jsonResult({
           ok: false,
           error:
             "gemini not found. Install with: brew install gemini-cli (or npm install -g @google/gemini-cli). Then run gemini once for auth if needed.",
         });
       }
-
-      const argv: string[] = ["gemini"];
       if (model) {
         argv.push("--model", model);
       }
@@ -55,11 +61,22 @@ export function createGeminiCliTool(): AnyAgentTool {
       }
       argv.push(prompt);
 
+      const timeoutMs = 120_000;
       try {
-        const result = await runCommandWithTimeout(argv, {
-          timeoutMs: 120_000,
-        });
+        const result = useZsh
+          ? await runViaZsh(argv, { timeoutMs })
+          : await runCommandWithTimeout(argv, {
+              timeoutMs,
+              env: { PATH: envPathWithCommonBins() },
+            });
 
+        if (result.code === null || result.killed) {
+          return jsonResult({
+            ok: false,
+            error: `Command timed out (${timeoutMs / 1000}s).`,
+            code: result.code,
+          });
+        }
         if (result.code !== 0) {
           const err = (result.stderr ?? result.stdout ?? "").trim() || "gemini failed";
           return jsonResult({
