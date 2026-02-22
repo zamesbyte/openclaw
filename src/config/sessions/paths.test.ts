@@ -50,12 +50,18 @@ describe("session path safety", () => {
   it("rejects unsafe sessionFile candidates that escape the sessions dir", () => {
     const sessionsDir = "/tmp/openclaw/agents/main/sessions";
 
-    expect(() =>
-      resolveSessionFilePath("sess-1", { sessionFile: "../../etc/passwd" }, { sessionsDir }),
-    ).toThrow(/within sessions directory/);
+    // When sessionsDir (or agentId) is provided, invalid candidates are ignored and we fall back to sessionId path
+    const fallback1 = resolveSessionFilePath("sess-1", { sessionFile: "../../etc/passwd" }, { sessionsDir });
+    expect(fallback1).toBe(path.resolve(sessionsDir, "sess-1.jsonl"));
 
+    const fallback2 = resolveSessionFilePath("sess-1", { sessionFile: "/etc/passwd" }, { sessionsDir });
+    expect(fallback2).toBe(path.resolve(sessionsDir, "sess-1.jsonl"));
+  });
+
+  it("throws when sessionFile escapes sessions dir and no opts provided", () => {
+    // When no agent context, we must not accept paths outside default sessions dir
     expect(() =>
-      resolveSessionFilePath("sess-1", { sessionFile: "/etc/passwd" }, { sessionsDir }),
+      resolveSessionFilePath("sess-1", { sessionFile: "/etc/passwd" }),
     ).toThrow(/within sessions directory/);
   });
 

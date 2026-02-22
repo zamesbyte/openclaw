@@ -410,7 +410,7 @@ export function buildAgentSystemPrompt(params: {
         ].join("\n"),
     ...(availableTools.has("gmail_list") || availableTools.has("gmail_send")
       ? [
-          "CRITICAL: gmail_list and gmail_send are registered and available. When the user asks to read/list/check email or inbox, you MUST call gmail_list (parameters: query string e.g. in:inbox, max number). When they ask to send email to a Gmail address, you MUST call gmail_send. Never reply that these tools do not exist—they are in your tool list; call them.",
+          "gmail_list and gmail_send are available. Use gmail_list when the user asks to read, list, or check email or inbox (parameters: query string e.g. in:inbox, max number). Use gmail_send when they ask to send email to a Gmail address (parameters: to, subject, body).",
         ]
       : []),
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",

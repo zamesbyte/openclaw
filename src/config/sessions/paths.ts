@@ -100,7 +100,15 @@ export function resolveSessionFilePath(
   const sessionsDir = resolveSessionsDir(opts);
   const candidate = entry?.sessionFile?.trim();
   if (candidate) {
-    return resolvePathWithinSessionsDir(sessionsDir, candidate);
+    try {
+      return resolvePathWithinSessionsDir(sessionsDir, candidate);
+    } catch (err) {
+      // entry.sessionFile may be from another agent or absolute; ignore and use sessionId
+      if (opts?.agentId !== undefined || opts?.sessionsDir !== undefined) {
+        return resolveSessionTranscriptPathInDir(sessionId, sessionsDir);
+      }
+      throw err;
+    }
   }
   return resolveSessionTranscriptPathInDir(sessionId, sessionsDir);
 }
