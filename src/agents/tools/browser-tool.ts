@@ -22,7 +22,10 @@ import {
 import { resolveBrowserConfig } from "../../browser/config.js";
 import { DEFAULT_AI_SNAPSHOT_MAX_CHARS } from "../../browser/constants.js";
 import { loadConfig } from "../../config/config.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { saveMediaBuffer } from "../../media/store.js";
+
+const logBrowserTool = createSubsystemLogger("agents/browser-tool");
 import { wrapExternalContent } from "../../security/external-content.js";
 import { BrowserToolSchema } from "./browser-tool.schema.js";
 import { type AnyAgentTool, imageResultFromFile, jsonResult, readStringParam } from "./common.js";
@@ -253,11 +256,13 @@ export function createBrowserTool(opts?: {
     label: "Browser",
     name: "browser",
     description: [
+      "For requests to open a URL, navigate, or search: invoke this tool (e.g. action=open with targetUrl). If the tool returns an error that no tab is attached, then ask the user to attach a tab and retry.",
+      "When the user wants to see the browser (e.g. 打开浏览器, 打开百度): use profile=\"chrome\" or omit profile so the page opens in the tab they attached; do not use profile=openclaw for these requests or the window may not be visible to them.",
       "Control the browser via OpenClaw's browser control server (status/start/stop/profiles/tabs/open/snapshot/screenshot/actions).",
-      'Profiles: use profile="chrome" for Chrome extension relay takeover (your existing Chrome tabs). Use profile="openclaw" for the isolated openclaw-managed browser.',
-      'If the user mentions the Chrome extension / Browser Relay / toolbar button / “attach tab”, ALWAYS use profile="chrome" (do not ask which profile).',
+      'Profiles: profile="chrome" = page opens in the user\'s attached Chrome tab (visible). profile="openclaw" = separate managed window (may open in background).',
+      'If the user mentions the Chrome extension / Browser Relay / toolbar button / “attach tab”, use profile="chrome".',
       'When a node-hosted browser proxy is available, the tool may auto-route to it. Pin a node with node=<id|name> or target="node".',
-      "Chrome extension relay needs an attached tab: user must click the OpenClaw Browser Relay toolbar icon on the tab (badge ON). If no tab is connected, ask them to attach it.",
+      "Chrome extension uses the tab the user attached (toolbar icon, badge ON).",
       "When using refs from snapshot (e.g. e12), keep the same tab: prefer passing targetId from the snapshot response into subsequent actions (act/click/type/etc).",
       'For stable, self-resolving refs across calls, use snapshot with refs="aria" (Playwright aria-ref ids). Default refs="role" are role+name-based.',
       "Use snapshot+act for UI automation. Avoid act:wait by default; use only in exceptional cases when no reliable UI state exists.",
@@ -270,13 +275,26 @@ export function createBrowserTool(opts?: {
       const action = readStringParam(params, "action", { required: true });
       const profile = readStringParam(params, "profile");
       const requestedNode = readStringParam(params, "node");
+      const cfg = loadConfig();
+      const browserResolved = resolveBrowserConfig(cfg.browser, cfg);
+      const effectiveProfile =
+        profile ??
+        (action === "open" || action === "navigate" ? browserResolved.defaultProfile : undefined);
+      const url =
+        action === "open" || action === "navigate"
+          ? readStringParam(params, "targetUrl", { required: false }) ||
+            (typeof (params as { url?: string }).url === "string" ? (params as { url: string }).url : undefined)
+          : undefined;
+      logBrowserTool.info(
+        `browser tool: action=${action}${url ? ` url=${url}` : ""} profile=${effectiveProfile ?? "default"}`,
+      );
       let target = readStringParam(params, "target") as "sandbox" | "host" | "node" | undefined;
 
       if (requestedNode && target && target !== "node") {
         throw new Error('node is only supported with target="node".');
       }
 
-      if (!target && !requestedNode && profile === "chrome") {
+      if (!target && !requestedNode && effectiveProfile === "chrome") {
         // Chrome extension relay takeover is a host Chrome feature; prefer host unless explicitly targeting a node.
         target = "host";
       }
@@ -327,45 +345,45 @@ export function createBrowserTool(opts?: {
               await proxyRequest({
                 method: "GET",
                 path: "/",
-                profile,
+                profile: effectiveProfile,
               }),
             );
           }
-          return jsonResult(await browserStatus(baseUrl, { profile }));
+          return jsonResult(await browserStatus(baseUrl, { profile: effectiveProfile }));
         case "start":
           if (proxyRequest) {
             await proxyRequest({
               method: "POST",
               path: "/start",
-              profile,
+              profile: effectiveProfile,
             });
             return jsonResult(
               await proxyRequest({
                 method: "GET",
                 path: "/",
-                profile,
+                profile: effectiveProfile,
               }),
             );
           }
-          await browserStart(baseUrl, { profile });
-          return jsonResult(await browserStatus(baseUrl, { profile }));
+          await browserStart(baseUrl, { profile: effectiveProfile });
+          return jsonResult(await browserStatus(baseUrl, { profile: effectiveProfile }));
         case "stop":
           if (proxyRequest) {
             await proxyRequest({
               method: "POST",
               path: "/stop",
-              profile,
+              profile: effectiveProfile,
             });
             return jsonResult(
               await proxyRequest({
                 method: "GET",
                 path: "/",
-                profile,
+                profile: effectiveProfile,
               }),
             );
           }
-          await browserStop(baseUrl, { profile });
-          return jsonResult(await browserStatus(baseUrl, { profile }));
+          await browserStop(baseUrl, { profile: effectiveProfile });
+          return jsonResult(await browserStatus(baseUrl, { profile: effectiveProfile }));
         case "profiles":
           if (proxyRequest) {
             const result = await proxyRequest({
@@ -380,7 +398,7 @@ export function createBrowserTool(opts?: {
             const result = await proxyRequest({
               method: "GET",
               path: "/tabs",
-              profile,
+              profile: effectiveProfile,
             });
             const tabs = (result as { tabs?: unknown[] }).tabs ?? [];
             const wrapped = wrapBrowserExternalJson({
@@ -394,7 +412,7 @@ export function createBrowserTool(opts?: {
             };
           }
           {
-            const tabs = await browserTabs(baseUrl, { profile });
+            const tabs = await browserTabs(baseUrl, { profile: effectiveProfile });
             const wrapped = wrapBrowserExternalJson({
               kind: "tabs",
               payload: { tabs },
@@ -409,16 +427,26 @@ export function createBrowserTool(opts?: {
           const targetUrl = readStringParam(params, "targetUrl", {
             required: true,
           });
+          let result: unknown;
           if (proxyRequest) {
-            const result = await proxyRequest({
+            result = await proxyRequest({
               method: "POST",
               path: "/tabs/open",
-              profile,
+              profile: effectiveProfile,
               body: { url: targetUrl },
             });
-            return jsonResult(result);
+          } else {
+            result = await browserOpenTab(baseUrl, targetUrl, { profile: effectiveProfile });
           }
-          return jsonResult(await browserOpenTab(baseUrl, targetUrl, { profile }));
+          const out = jsonResult(result);
+          if (effectiveProfile === "chrome") {
+            (out.content as { type: string; text: string }[]).push({
+              type: "text",
+              text:
+                "\n\nIf the user does not see the page: they should switch to the attached Chrome tab (extension badge ON) or the newly opened tab in that window.",
+            });
+          }
+          return out;
         }
         case "focus": {
           const targetId = readStringParam(params, "targetId", {
@@ -428,12 +456,12 @@ export function createBrowserTool(opts?: {
             const result = await proxyRequest({
               method: "POST",
               path: "/tabs/focus",
-              profile,
+              profile: effectiveProfile,
               body: { targetId },
             });
             return jsonResult(result);
           }
-          await browserFocusTab(baseUrl, targetId, { profile });
+          await browserFocusTab(baseUrl, targetId, { profile: effectiveProfile });
           return jsonResult({ ok: true });
         }
         case "close": {
@@ -443,20 +471,20 @@ export function createBrowserTool(opts?: {
               ? await proxyRequest({
                   method: "DELETE",
                   path: `/tabs/${encodeURIComponent(targetId)}`,
-                  profile,
+                  profile: effectiveProfile,
                 })
               : await proxyRequest({
                   method: "POST",
                   path: "/act",
-                  profile,
+                  profile: effectiveProfile,
                   body: { kind: "close" },
                 });
             return jsonResult(result);
           }
           if (targetId) {
-            await browserCloseTab(baseUrl, targetId, { profile });
+            await browserCloseTab(baseUrl, targetId, { profile: effectiveProfile });
           } else {
-            await browserAct(baseUrl, { kind: "close" }, { profile });
+            await browserAct(baseUrl, { kind: "close" }, { profile: effectiveProfile });
           }
           return jsonResult({ ok: true });
         }
@@ -507,7 +535,7 @@ export function createBrowserTool(opts?: {
             ? ((await proxyRequest({
                 method: "GET",
                 path: "/snapshot",
-                profile,
+                profile: effectiveProfile,
                 query: {
                   format,
                   targetId,
@@ -536,7 +564,7 @@ export function createBrowserTool(opts?: {
                 frame,
                 labels,
                 mode,
-                profile,
+                profile: effectiveProfile,
               });
           if (snapshot.format === "ai") {
             const extractedText = snapshot.snapshot ?? "";
@@ -612,7 +640,7 @@ export function createBrowserTool(opts?: {
             ? ((await proxyRequest({
                 method: "POST",
                 path: "/screenshot",
-                profile,
+                profile: effectiveProfile,
                 body: {
                   targetId,
                   fullPage,
@@ -627,7 +655,7 @@ export function createBrowserTool(opts?: {
                 ref,
                 element,
                 type,
-                profile,
+                profile: effectiveProfile,
               });
           return await imageResultFromFile({
             label: "browser:screenshot",
@@ -644,7 +672,7 @@ export function createBrowserTool(opts?: {
             const result = await proxyRequest({
               method: "POST",
               path: "/navigate",
-              profile,
+              profile: effectiveProfile,
               body: {
                 url: targetUrl,
                 targetId,
@@ -656,7 +684,7 @@ export function createBrowserTool(opts?: {
             await browserNavigate(baseUrl, {
               url: targetUrl,
               targetId,
-              profile,
+              profile: effectiveProfile,
             }),
           );
         }
@@ -667,7 +695,7 @@ export function createBrowserTool(opts?: {
             const result = (await proxyRequest({
               method: "GET",
               path: "/console",
-              profile,
+              profile: effectiveProfile,
               query: {
                 level,
                 targetId,
@@ -688,7 +716,7 @@ export function createBrowserTool(opts?: {
             };
           }
           {
-            const result = await browserConsoleMessages(baseUrl, { level, targetId, profile });
+            const result = await browserConsoleMessages(baseUrl, { level, targetId, profile: effectiveProfile });
             const wrapped = wrapBrowserExternalJson({
               kind: "console",
               payload: result,
@@ -710,10 +738,10 @@ export function createBrowserTool(opts?: {
             ? ((await proxyRequest({
                 method: "POST",
                 path: "/pdf",
-                profile,
+                profile: effectiveProfile,
                 body: { targetId },
               })) as Awaited<ReturnType<typeof browserPdfSave>>)
-            : await browserPdfSave(baseUrl, { targetId, profile });
+            : await browserPdfSave(baseUrl, { targetId, profile: effectiveProfile });
           return {
             content: [{ type: "text", text: `FILE:${result.path}` }],
             details: result,
@@ -736,7 +764,7 @@ export function createBrowserTool(opts?: {
             const result = await proxyRequest({
               method: "POST",
               path: "/hooks/file-chooser",
-              profile,
+              profile: effectiveProfile,
               body: {
                 paths,
                 ref,
@@ -756,7 +784,7 @@ export function createBrowserTool(opts?: {
               element,
               targetId,
               timeoutMs,
-              profile,
+              profile: effectiveProfile,
             }),
           );
         }
@@ -772,7 +800,7 @@ export function createBrowserTool(opts?: {
             const result = await proxyRequest({
               method: "POST",
               path: "/hooks/dialog",
-              profile,
+              profile: effectiveProfile,
               body: {
                 accept,
                 promptText,
@@ -788,7 +816,7 @@ export function createBrowserTool(opts?: {
               promptText,
               targetId,
               timeoutMs,
-              profile,
+              profile: effectiveProfile,
             }),
           );
         }
@@ -802,25 +830,25 @@ export function createBrowserTool(opts?: {
               ? await proxyRequest({
                   method: "POST",
                   path: "/act",
-                  profile,
+                  profile: effectiveProfile,
                   body: request,
                 })
               : await browserAct(baseUrl, request as Parameters<typeof browserAct>[1], {
-                  profile,
+                  profile: effectiveProfile,
                 });
             return jsonResult(result);
           } catch (err) {
             const msg = String(err);
-            if (msg.includes("404:") && msg.includes("tab not found") && profile === "chrome") {
+            if (msg.includes("404:") && msg.includes("tab not found") && effectiveProfile === "chrome") {
               const tabs = proxyRequest
                 ? ((
                     (await proxyRequest({
                       method: "GET",
                       path: "/tabs",
-                      profile,
+                      profile: effectiveProfile,
                     })) as { tabs?: unknown[] }
                   ).tabs ?? [])
-                : await browserTabs(baseUrl, { profile }).catch(() => []);
+                : await browserTabs(baseUrl, { profile: effectiveProfile }).catch(() => []);
               if (!tabs.length) {
                 throw new Error(
                   "No Chrome tabs are attached via the OpenClaw Browser Relay extension. Click the toolbar icon on the tab you want to control (badge ON), then retry.",

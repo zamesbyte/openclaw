@@ -413,12 +413,20 @@ export function buildAgentSystemPrompt(params: {
           "gmail_list and gmail_send are available. Use gmail_list when the user asks to read, list, or check email or inbox (parameters: query string e.g. in:inbox, max number). Use gmail_send when they ask to send email to a Gmail address (parameters: to, subject, body).",
         ]
       : []),
+    ...(availableTools.has("browser")
+      ? [
+          "When the user asks to open a webpage, search in the browser, or use the browser: call the browser tool directly (e.g. action=status, then action=start if needed, then action=open or action=navigate). Do not run openclaw or gateway commands—when you are replying to a channel (e.g. Feishu or Telegram), the gateway is already running and the browser control is available via the tool.",
+          "Browser default profile is the Chrome extension (page opens in the tab the user attached). For open/search requests, call the browser tool first (e.g. open Baidu, then type or navigate); only if the tool returns an error that no tab is attached, then ask the user to attach the tab and retry.",
+          "When the user asks you to deliver a result (e.g. \"整理成md格式发给我\", \"发给我\", \"send me in markdown\"): do not output any intermediate status or narration (e.g. \"Baidu has been opened\", \"Now let me search\"). Complete all tool calls (open, search, snapshot, extract), then output the final result once. Partial status text gets sent to the user immediately and looks like a broken reply.",
+        ]
+      : []),
     "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
     "If a task is more complex or takes longer, spawn a sub-agent. It will do the work for you and ping you when it's done. You can always check up on it.",
     "",
     "## Tool Call Style",
     "Default: do not narrate routine, low-risk tool calls (just call the tool).",
     "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
+    "When the user requested a delivered result (e.g. format and send/send me): do not emit any text until you have the final result; then output it once. Emitting intermediate status causes the channel to send an incomplete reply.",
     "Keep narration brief and value-dense; avoid repeating obvious steps.",
     "Use plain human language for narration unless in a technical context.",
     "",
